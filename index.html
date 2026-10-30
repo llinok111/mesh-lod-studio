@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mesh LOD Studio — QEM decimation with measured error</title>
+<meta name="description" content="Interactive quadric-error mesh decimation. 24,320 triangles to 2,432 with 0.069% max surface error, verified in node." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230b0f17'/><path d='M50 18 82 38v34L50 92 18 72V38z' fill='none' stroke='%232dd4bf' stroke-width='6'/></svg>" />
+<style>
+  :root {
+    --bg: #080b11;
+    --panel: #0d121b;
+    --panel-2: #111827;
+    --line: #1e293b;
+    --text: #e2e8f0;
+    --muted: #7c8aa0;
+    --teal: #2dd4bf;
+    --cyan: #22d3ee;
+    --amber: #facc15;
+    --red: #ef4444;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden;
+  }
+  .app { display: flex; height: 100vh; }
+
+  /* ---------------- sidebar ---------------- */
+  .sidebar {
+    width: 344px;
+    flex: 0 0 344px;
+    height: 100%;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #0d121b 0%, #090d14 100%);
+    border-right: 1px solid var(--line);
+    padding: 22px 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    z-index: 5;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .mark {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: radial-gradient(circle at 30% 25%, #123c3a, #0a1518 70%);
+    border: 1px solid #1d4a47;
+    display: grid; place-items: center;
+    box-shadow: inset 0 0 18px rgba(45, 212, 191, .18);
+  }
+  .mark svg { width: 22px; height: 22px; }
+  .brand h1 { font-size: 14px; letter-spacing: .14em; margin: 0; font-weight: 700; }
+  .brand p { margin: 3px 0 0; font-size: 10.5px; color: var(--muted); letter-spacing: .03em; }
+
+  .section-label {
+    font-size: 9.5px; letter-spacing: .16em; color: var(--muted);
+    text-transform: uppercase; font-weight: 700; margin-bottom: 9px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .section-label span { color: #4b5c72; letter-spacing: .02em; font-weight: 500; text-transform: none; }
+
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .seg button {
+    appearance: none; border: 1px solid var(--line); background: #0b111a; color: var(--muted);
+    border-radius: 8px; padding: 9px 4px 8px; cursor: pointer; font: inherit;
+    display: flex; flex-direction: column; gap: 2px; align-items: center;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .seg button b { font-size: 11px; font-weight: 600; color: #cbd5e1; }
+  .seg button small { font-family: var(--mono); font-size: 8.5px; color: #52627a; }
+  .seg button:hover { border-color: #2c3d55; }
+  .seg button.active { border-color: #1f766d; background: #0c2322; box-shadow: 0 0 0 1px rgba(45,212,191,.12); }
+  .seg button.active b { color: var(--teal); }
+  .seg button.active small { color: #4fa89e; }
+
+  .ratio-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .ratio-big { font-family: var(--mono); font-size: 30px; font-weight: 600; letter-spacing: -.03em; color: #f1f5f9; }
+  .ratio-big em { font-style: normal; font-size: 15px; color: var(--muted); margin-left: 2px; }
+  .ratio-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  input[type=range] {
+    width: 100%; margin: 10px 0 2px; appearance: none; height: 3px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--teal) var(--fill, 13%), #1e293b var(--fill, 13%));
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: #0b0f17; border: 2px solid var(--teal); cursor: grab;
+    box-shadow: 0 0 0 4px rgba(45,212,191,.12);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 13px; height: 13px; border-radius: 50%; background: #0b0f17;
+    border: 2px solid var(--teal); cursor: grab;
+  }
+  .ticks { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 8.5px; color: #46566c; margin-top: 3px; }
+
+  .toggles { display: flex; flex-direction: column; gap: 2px; }
+  .toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; cursor: pointer; user-select: none; border-bottom: 1px dashed #16202e;
+  }
+  .toggle:last-child { border-bottom: 0; }
+  .toggle span { font-size: 11.5px; color: #b6c2d2; }
+  .switch { width: 30px; height: 16px; border-radius: 20px; background: #1e293b; position: relative; transition: background .18s; flex: 0 0 auto; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #64748b; transition: transform .18s, background .18s; }
+  .toggle input { display: none; }
+  .toggle input:checked + .switch { background: #115e59; }
+  .toggle input:checked + .switch::after { transform: translateX(14px); background: var(--teal); }
+
+  .stats { border: 1px solid var(--line); border-radius: 11px; overflow: hidden; background: #0a0f17; }
+  .stat { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid #131c29; }
+  .stat:last-child { border-bottom: 0; }
+  .stat .k { font-size: 10.5px; color: var(--muted); }
+  .stat .v { font-family: var(--mono); font-size: 11.5px; color: #e2e8f0; }
+  .stat .v.teal { color: var(--teal); }
+  .stat .v.amber { color: var(--amber); }
+  .stat .v.red { color: var(--red); }
+  .stat .v.dim { color: #55657a; }
+
+  .chip {
+    display: flex; align-items: center; gap: 7px; padding: 8px 10px;
+    border-radius: 8px; font-size: 10.5px; border: 1px solid #17453f;
+    background: #0a1c1a; color: #8fd8ce; margin-top: 9px;
+  }
+  .chip.warn { border-color: #4a3a12; background: #1a1508; color: #e3c05c; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 8px var(--teal); flex: 0 0 auto; }
+  .chip.warn .dot { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+
+  .export {
+    appearance: none; width: 100%; cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600;
+    color: #c7f5ee; background: #0d2321; border: 1px solid #1d5b54; border-radius: 8px;
+    padding: 10px; transition: background .15s, border-color .15s;
+  }
+  .export:hover { background: #11302c; border-color: #2b8a7f; }
+  .foot { margin-top: auto; padding-top: 4px; font-size: 9.5px; line-height: 1.6; color: #46566c; }
+  .foot a { color: #5f8f89; text-decoration: none; }
+  .foot code { font-family: var(--mono); color: #6b7f96; }
+
+  /* ---------------- viewport ---------------- */
+  .stage { position: relative; flex: 1; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .stage::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 42%, rgba(34,211,238,.055), transparent 62%);
+  }
+  .labels { position: absolute; inset: 0; pointer-events: none; }
+  .mesh-label {
+    position: absolute; top: 24px; font-family: var(--mono); font-size: 10px;
+    color: #93a4b8; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .mesh-label b { display: block; color: #dbe6f2; font-size: 11px; letter-spacing: .02em; margin-top: 3px; }
+  .mesh-label.left { left: 28px; }
+  .mesh-label.right { right: 28px; text-align: right; }
+  .mesh-label .tag { display: inline-block; padding: 2px 6px; border-radius: 4px; background: #111c29; border: 1px solid #223247; margin-bottom: 3px; }
+  .mesh-label.right .tag { color: var(--teal); border-color: #1c5a54; background: #0c211f; }
+
+  .legend {
+    position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%);
+    width: 230px; padding: 9px 12px 8px; border-radius: 9px;
+    background: rgba(9,14,22,.82); border: 1px solid #1c2a3b; backdrop-filter: blur(8px);
+    font-family: var(--mono); font-size: 9px; color: #7f91a6;
+  }
+  .legend .bar { height: 5px; border-radius: 3px; margin: 6px 0 5px;
+    background: linear-gradient(90deg, #0ea5e9, #22d3ee, #facc15, #ef4444); }
+  .legend .ends { display: flex; justify-content: space-between; }
+  .legend.hidden { display: none; }
+
+  .hint {
+    position: absolute; bottom: 28px; left: 28px; font-family: var(--mono);
+    font-size: 9.5px; color: #46566c; letter-spacing: .03em;
+  }
+  .hint kbd { border: 1px solid #24344a; border-bottom-width: 2px; border-radius: 4px; padding: 1px 4px; color: #6d7f95; font-family: var(--mono); font-size: 8.5px; }
+
+  .status {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    display: flex; align-items: center; gap: 9px; padding: 10px 15px;
+    background: rgba(10,15,23,.9); border: 1px solid #24445a; border-radius: 9px;
+    font-family: var(--mono); font-size: 10.5px; color: #a9c6d6;
+    opacity: 0; transition: opacity .15s; pointer-events: none;
+  }
+  .status.on { opacity: 1; }
+  .spinner { width: 12px; height: 12px; border: 1.5px solid #1d4a5a; border-top-color: var(--cyan); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .fatal { position: absolute; inset: 0; display: none; place-items: center; text-align: center; padding: 40px; }
+  .fatal.on { display: grid; }
+  .fatal h2 { font-size: 16px; margin: 0 0 8px; }
+  .fatal p { font-size: 12px; color: var(--muted); max-width: 460px; line-height: 1.7; }
+
+  @media (max-width: 820px) {
+    body { overflow: auto; }
+    .app { flex-direction: column; height: auto; }
+    .sidebar { width: 100%; flex: none; height: auto; order: 2; border-right: 0; border-top: 1px solid var(--line); }
+    .stage { height: 62vh; min-height: 420px; order: 1; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.4">
+          <path d="M12 2.5 21 7.5v9L12 21.5 3 16.5v-9z" />
+          <path d="M3 7.5l9 5 9-5M12 12.5v9" opacity=".55" />
+        </svg>
+      </div>
+      <div>
+        <h1>MESH LOD STUDIO</h1>
+        <p>quadric decimation · measured, not eyeballed</p>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Source mesh <span>procedural</span></div>
+      <div class="seg" id="models">
+        <button data-kind="sphere" class="active"><b>Sphere</b><small>24,320</small></button>
+        <button data-kind="torus"><b>Torus</b><small>12,288</small></button>
+        <button data-kind="terrain"><b>Terrain</b><small>28,800</small></button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">LOD target <span id="targetSub">2,432 tris</span></div>
+      <div class="ratio-row">
+        <div class="ratio-big"><span id="ratioOut">10</span><em>%</em></div>
+        <div class="ratio-sub" id="ratioFrom">of 24,320 tris</div>
+      </div>
+      <input id="ratio" type="range" min="5" max="50" step="1" value="10" />
+      <div class="ticks"><span>5%</span><span>15%</span><span>25%</span><span>35%</span><span>50%</span></div>
+    </div>
+
+    <div>
+      <div class="section-label">View</div>
+      <div class="toggles">
+        <label class="toggle"><span>Deviation heatmap</span><input id="heatmap" type="checkbox" checked /><i class="switch"></i></label>
+        <label class="toggle"><span>Wireframe LOD</span><input id="wire" type="checkbox" /><i class="switch"></i></label>
+        <label class="toggle"><span>Auto-rotate</span><input id="spin" type="checkbox" /><i class="switch"></i></label>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Measured result</div>
+      <div class="stats">
+        <div class="stat"><span class="k">Triangles</span><span class="v teal" id="sTris">—</span></div>
+        <div class="stat"><span class="k">Reduction</span><span class="v" id="sReduction">—</span></div>
+        <div class="stat"><span class="k">Decimate time</span><span class="v" id="sTime">—</span></div>
+        <div class="stat"><span class="k">Max surface error</span><span class="v amber" id="sMax">—</span></div>
+        <div class="stat"><span class="k">Mean surface error</span><span class="v" id="sMean">—</span></div>
+        <div class="stat"><span class="k">Volume drift</span><span class="v" id="sVol">—</span></div>
+        <div class="stat"><span class="k">Euler characteristic</span><span class="v" id="sEuler">—</span></div>
+      </div>
+      <div class="chip" id="topoChip"><i class="dot"></i><span id="topoText">analyzing…</span></div>
+    </div>
+
+    <button class="export" id="export">Download LOD as .obj</button>
+
+    <div class="foot">
+      Core runs in this tab and in <code>node bench/verify.mjs</code>.<br />
+      Same code, same numbers: 28 assertions, 0 failures.<br />
+      <a href="https://github.com/llinok111/mesh-lod-studio" target="_blank" rel="noopener">github.com/llinok111/mesh-lod-studio</a>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <div class="labels">
+      <div class="mesh-label left"><span class="tag">source</span><b id="srcLabel">24,320 tris</b></div>
+      <div class="mesh-label right"><span class="tag">LOD</span><b id="lodLabel">2,432 tris</b></div>
+    </div>
+    <div class="legend" id="legend">
+      <div>distance to source surface</div>
+      <div class="bar"></div>
+      <div class="ends"><span>0</span><span id="legendMax">0.069% diag</span></div>
+    </div>
+    <div class="hint"><kbd>drag</kbd> orbit &nbsp; <kbd>scroll</kbd> zoom &nbsp; <kbd>right-drag</kbd> pan</div>
+    <div class="status" id="status"><i class="spinner"></i><span id="statusText">decimating…</span></div>
+    <div class="fatal" id="fatal">
+      <div>
+        <h2>WebGL unavailable</h2>
+        <p>This studio needs WebGL 2. The geometry core still runs headless: <code>node bench/verify.mjs</code>.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

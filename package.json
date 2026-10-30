@@ -1,0 +1,12 @@
+{
+  "name": "mesh-lod-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Quadric-error mesh decimation lab with node-verifiable deviation metrics",
+  "scripts": {
+    "verify": "node bench/verify.mjs",
+    "bench": "node bench/bench.mjs",
+    "serve": "python3 -m http.server 4173"
+  }
+}
